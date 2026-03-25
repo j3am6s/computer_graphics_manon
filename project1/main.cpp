@@ -90,12 +90,36 @@ public:
 	// and the unit normal N
 	bool intersect(const Ray& ray, Vector& P, double &t, Vector& N) const {
 		 // TODO (lab 1) : compute the intersection (just true/false at the begining of lab 1, then P, t and N as well)
-		return false;
+        
+
+        double discriminant = dot(ray.u, ray.O-C)*dot(ray.u, ray.O-C) - ((ray.O-C).norm2()-R*R);    
+
+		if (discriminant < 0) {
+            return false;
+        }
+        
+        double tavant = dot(ray.u, C-ray.O) - sqrt(discriminant);
+		double tapres = dot(ray.u, C-ray.O) + sqrt(discriminant);
+
+        if (tavant>0) {
+            t = tavant;
+        } else if (tapres>0) {
+            t = tapres;
+        } else {
+            return false;
+        }
+
+		P = ray.O+t*ray.u;
+		N = P-C;
+		N.normalize();
+
+		return true;
 	}
 
 	double R;
 	Vector C;
 };
+
 
 
 // I will provide you with an obj mesh loader (labs 3 and 4)
@@ -127,7 +151,29 @@ public:
 		// TODO (lab 1): iterate through the objects and check the intersections with all of them, 
 		// and keep the closest intersection, i.e., the one if smallest positive value of t
 
-		return false;
+		t = 1E30; //on prend tres grand
+		bool verifier_intersection = false;
+
+		for (int i = 0; i < objects.size(); i++) {
+			Vector P1;
+            Vector N1;
+			double t1;
+			if (objects[i]->intersect(ray, P1, t1, N1)) {
+				if (t1<t) {
+					t = t1;
+					P = P1;
+					N = N1;
+					object_id = i;
+					verifier_intersection = true;
+				}
+			}
+		}
+
+		return verifier_intersection;
+        //, object_id; 
+        //attention
+	
+
 	}
 
 
@@ -142,10 +188,38 @@ public:
 		Vector P, N;
 		double t;
 		int object_id;
+        
 		if (intersect(ray, P, t, N, object_id)) {
+            Vector P1 = P+0.00001*N;
+            Vector lumiere = light_position-P;
 
-			if (objects[object_id]->mirror) {
+            
+            double attenuation = light_intensity/(4.*M_PI*lumiere.norm2());
+            double material = 1./M_PI;
+            lumiere.normalize();
+            double angle = std::max(0., dot(N, lumiere));
 
+            Vector color = objects[object_id]->albedo * (attenuation * material * angle);
+
+            Vector Pombre;
+            Vector Nombre;
+            double tombre;
+            int idombre;
+
+            Ray rayon_ombre(P1, lumiere);
+
+            // if (intersect(rayon_ombre, Pombre, tombre, Nombre, idombre)) {
+            //     if ((P1-P).norm2() <= lumiere.norm2()) {
+            //         return Vector(0, 0, 0);
+            //     }
+            // }
+
+
+            if (objects[object_id]->mirror) {
+                Vector aaaaaa = ray.u-2*dot(ray.u, N)*N;
+                aaaaaa.normalize();
+                Ray sacha = Ray(P1, aaaaaa);
+                return getColor(sacha, recursion_depth+1);
 				// return getColor in the reflected direction, with recursion_depth+1 (recursively)
 			} // else
 
@@ -158,10 +232,11 @@ public:
 			// if there is no shadow, compute the formula with dot products etc.
 
 
+
 			// TODO (lab 2) : add indirect lighting component with a recursive call
+            return color;
 		}
 
-		
 
 		return Vector(0, 0, 0);
 	}
@@ -174,6 +249,8 @@ public:
 };
 
 
+
+
 int main() {
 	int W = 512;
 	int H = 512;
@@ -182,7 +259,7 @@ int main() {
 		engine[i].seed(i);
 	}
 
-	Sphere center_sphere(Vector(0, 0, 0), 10., Vector(0.8, 0.8, 0.8));
+	Sphere center_sphere(Vector(0, 0, 0), 10., Vector(0.8, 0.8, 0.8), true);
 	Sphere wall_left(Vector(-1000, 0, 0), 940, Vector(0.5, 0.8, 0.1));
 	Sphere wall_right(Vector(1000, 0, 0), 940, Vector(0.9, 0.2, 0.3));
 	Sphere wall_front(Vector(0, 0, -1000), 940, Vector(0.1, 0.6, 0.7));
@@ -191,23 +268,23 @@ int main() {
 	Sphere floor(Vector(0, -1000, 0), 990, Vector(0.6, 0.5, 0.7));
 
 	Scene scene;
-	scene.camera_center = Vector(0, 0, 0);
+	scene.camera_center = Vector(0, 0, 55);
 	scene.light_position = Vector(-10,20,40);
 	scene.light_intensity = 3E7;
 	scene.fov = 60 * M_PI / 180.;
-	scene.gamma = 1.0;    // TODO (lab 1) : play with gamma ; typically, gamma = 2.2
+	scene.gamma = 2.2;    // TODO (lab 1) : play with gamma ; typically, gamma = 2.2
 	scene.max_light_bounce = 5;
 
 	scene.addObject(&center_sphere);
 
-	/*
+	
 	scene.addObject(&wall_left);
 	scene.addObject(&wall_right);
 	scene.addObject(&wall_front);
 	scene.addObject(&wall_behind);
 	scene.addObject(&ceiling);
 	scene.addObject(&floor);
-	*/
+	
 
 	std::vector<unsigned char> image(W * H * 3, 0);
 
@@ -217,7 +294,14 @@ int main() {
 			Vector color;
 
 			// TODO (lab 1) : correct ray_direction so that it goes through each pixel (j, i)			
-			Vector ray_direction(0., 0., -1);
+            double x = j-W/2+0.5;
+            double y = H/2-i-0.5;
+			double z = -(W/(2*tan(scene.fov/2)));
+			
+			Vector ray_direction(x, y, z);
+			ray_direction.normalize();
+
+			// Vector ray_direction(0., 0., -1);
 
 			Ray ray(scene.camera_center, ray_direction);
 
