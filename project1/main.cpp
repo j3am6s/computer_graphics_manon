@@ -2,6 +2,8 @@
 #include <vector>
 #include <cmath>
 #include <random>
+// #include <omp.h>
+
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -12,6 +14,7 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323856
 #endif
+
 
 static std::default_random_engine engine[32];
 static std::uniform_real_distribution<double> uniform(0, 1);
@@ -190,51 +193,83 @@ public:
 		int object_id;
         
 		if (intersect(ray, P, t, N, object_id)) {
-            Vector P1 = P+0.00001*N;
-            Vector lumiere = light_position-P;
+			
+			Vector P1 = P+0.00001*N;
+			Vector lumiere = light_position-P; //SHOULD HERE BE P1???
 
-            
-            double attenuation = light_intensity/(4.*M_PI*lumiere.norm2());
-            double material = 1./M_PI;
-            lumiere.normalize();
-            double angle = std::max(0., dot(N, lumiere));
-
-            Vector color = objects[object_id]->albedo * (attenuation * material * angle);
-
-            Vector Pombre;
-            Vector Nombre;
-            double tombre;
-            int idombre;
-
-            Ray rayon_ombre(P1, lumiere);
-
-            // if (intersect(rayon_ombre, Pombre, tombre, Nombre, idombre)) {
-            //     if ((P1-P).norm2() <= lumiere.norm2()) {
-            //         return Vector(0, 0, 0);
-            //     }
-            // }
-
-
-            if (objects[object_id]->mirror) {
+			if (objects[object_id]->mirror) {
                 Vector aaaaaa = ray.u-2*dot(ray.u, N)*N;
                 aaaaaa.normalize();
                 Ray sacha = Ray(P1, aaaaaa);
                 return getColor(sacha, recursion_depth+1);
 				// return getColor in the reflected direction, with recursion_depth+1 (recursively)
 			} // else
-
 			if (objects[object_id]->transparent) { // optional
 
 				// return getColor in the refraction direction, with recursion_depth+1 (recursively)
 			} // else
-
+			
 			// test if there is a shadow by sending a new ray
 			// if there is no shadow, compute the formula with dot products etc.
 
+			Vector Pombre;
+			Vector Nombre;
+			double tombre;
+			int idombre;
 
+			Ray rayon_ombre(P1, lumiere/sqrt(lumiere.norm2()));
+
+			if (intersect(rayon_ombre, Pombre, tombre, Nombre, idombre)) {
+				if ((Pombre-P).norm2() < lumiere.norm2()) { // OR if (tombre < lumiere/sqrt(lumiere.norm2())) {
+					return Vector(0.1, 0.1, 0.1);
+				}
+			}
+
+			double attenuation = light_intensity/(4.*M_PI*lumiere.norm2());
+            double material = 1./M_PI;
+			double angle = std::max(0., dot(N, lumiere/sqrt(lumiere.norm2())));
+            // lumiere.normalize();
+
+			Vector color = objects[object_id]->albedo * (attenuation * material * angle);
 
 			// TODO (lab 2) : add indirect lighting component with a recursive call
-            return color;
+			// -----
+
+			double r1 = uniform(engine[0]);
+			double r2 = uniform(engine[0]);
+			double x = cos(2.*M_PI*r1) * sqrt(1-r2);
+			double y = sin(2.*M_PI*r1) * sqrt(1-r2);
+			double z = sqrt(r2);
+
+
+			Vector T1;
+			if (abs(N[2] < abs(N[0])) && abs(N[2] < abs(N[1]))) {
+				T1 = Vector(-N[1], N[0], 0);
+			} else if (abs(N[1] < abs(N[0])) && abs(N[1] < abs(N[0]))) {
+				T1 = Vector(-N[2], 0, N[1]);
+			} else {
+				T1 = Vector(0, -N[2], N[1]);
+			}
+
+			T1.normalize();
+
+			Vector T2;
+			T2 = cross(N, T1);
+
+			Vector rdir;
+			rdir = x * T1 + y * T2 + z * N;
+			rdir.normalize();
+			
+
+			Ray indirect_ray(P1, rdir);
+			
+			Vector indirect;
+			indirect = getColor(indirect_ray, recursion_depth+1);
+
+
+			return color + Vector(objects[object_id]->albedo[0] * indirect[0], objects[object_id]->albedo[1] * indirect[1], objects[object_id]->albedo[2] * indirect[2]);			
+		
+            // return color;
 		}
 
 
@@ -289,27 +324,52 @@ int main() {
 	std::vector<unsigned char> image(W * H * 3, 0);
 
 #pragma omp parallel for schedule(dynamic, 1)
+	
 	for (int i = 0; i < H; i++) {
 		for (int j = 0; j < W; j++) {
+			// int tid = omp_get_thread_num();
 			Vector color;
 
-			// TODO (lab 1) : correct ray_direction so that it goes through each pixel (j, i)			
-            double x = j-W/2+0.5;
-            double y = H/2-i-0.5;
-			double z = -(W/(2*tan(scene.fov/2)));
+			// TODO (lab 1) : correct ray_direction so that it goes through each pixel (j, i)
+
+			// below was commented when doing lab 2	
+			// -----	
+
+            // double x = j-W/2+0.5;
+            // double y = H/2-i-0.5;
+			// double z = -(W/(2*tan(scene.fov/2)));
 			
-			Vector ray_direction(x, y, z);
-			ray_direction.normalize();
+			// Vector ray_direction(x, y, z);
+			// ray_direction.normalize();
 
-			// Vector ray_direction(0., 0., -1);
+			// // Vector ray_direction(0., 0., -1);
 
-			Ray ray(scene.camera_center, ray_direction);
+			// Ray ray(scene.camera_center, ray_direction);
+
+			// -----	
 
 			// TODO (lab 2) : add Monte Carlo / averaging of random ray contributions here
 			// TODO (lab 2) : add antialiasing by altering the ray_direction here
 			// TODO (lab 2) : add depth of field effect by altering the ray origin (and direction) here
 
-			color  = scene.getColor(ray, 0);
+			int N=10;
+			for (int k = 0; k<N; k++) {
+				double r1 = uniform(engine[0]);
+				double r2 = uniform(engine[0]);
+				// double r1 = uniform(engine[tid]);
+				// double r2 = uniform(engine[tid]);
+				// sigma is 0.5
+				double x = j-W/2 + 0.5 * sqrt((-2.)*log(r1)) * cos(2.*M_PI*r2);
+				double y = H/2-i + 0.5 * sqrt((-2.)*log(r1)) * sin(2.*M_PI*r2);
+				double z = -(W/(2*tan(scene.fov/2)));
+				Vector ray_direction(x, y, z);
+				ray_direction.normalize();
+				Ray ray(scene.camera_center, ray_direction);
+				color = color + scene.getColor(ray, 0);
+			}
+
+			color = color / N;
+			
 
 			image[(i * W + j) * 3 + 0] = std::min(255., std::max(0., 255. * std::pow(color[0] / 255., 1. / scene.gamma)));
 			image[(i * W + j) * 3 + 1] = std::min(255., std::max(0., 255. * std::pow(color[1] / 255., 1. / scene.gamma)));
