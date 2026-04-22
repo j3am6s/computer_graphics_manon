@@ -270,6 +270,7 @@ public:
 			return color + Vector(objects[object_id]->albedo[0] * indirect[0], objects[object_id]->albedo[1] * indirect[1], objects[object_id]->albedo[2] * indirect[2]);			
 		
             // return color;
+			
 		}
 
 
