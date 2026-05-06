@@ -660,8 +660,8 @@ int main() {
 
 	// scene.addObject(&center_sphere);
     scene.addObject(&cat);
-	scene.addObject(&catblue);
-	scene.addObject(&catred);
+	//scene.addObject(&catblue);
+	//scene.addObject(&catred);
 
 	scene.addObject(&wall_left);
 	scene.addObject(&wall_right);
@@ -685,7 +685,7 @@ int main() {
 			// TODO (lab 2) : add antialiasing by altering the ray_direction here
 			// TODO (lab 2) : add depth of field effect by altering the ray origin (and direction) here
 
-			int N=60;
+			int N=100;
 			for (int k = 0; k<N; k++) {
 				// double r1 = uniform(engine[0]);
 				// double r2 = uniform(engine[0]);
