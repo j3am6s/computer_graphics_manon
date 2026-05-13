@@ -10,6 +10,12 @@
 
 #include "lbfgs.h"
 
+
+#include <cmath>
+#include <algorithm>
+#include <cstdlib>
+#include <ctime>
+
 double sqr(double x) { return x * x; };
 
 class Vector {
@@ -193,6 +199,24 @@ public:
         //      For all other sites Pj (optionally, only k nearest neighbors) :
         //          Clip it with bisector of [Pi,Pj]
         //      (Lab 3, fluids) : also clip it by a disk of radius sqrt(w_i - w_air) centered at Pi
+
+        cells.clear();
+        cells.resize(points.size());
+
+#pragma omp parallel for schedule(dynamic)
+        for (int i=0; i <(int)points.size(); i++) {
+            Polygon cell;
+            cell.vertices.push_back(Vector(0, 0));
+            cell.vertices.push_back(Vector(1, 0));
+            cell.vertices.push_back(Vector(1, 1));
+            cell.vertices.push_back(Vector(0, 1));
+            for (int j=0; j<(int)points.size(); j++) {
+                double wi=.0;
+                double wj=.0;
+                cell =clip_by_bisector(cell, points[i], points[j], wi, wj);
+            }
+            cells[i] = cell;
+        }
     }
 
 
@@ -215,6 +239,34 @@ public:
         // TODO Lab 2 (Semi-Discrete Optimal Transport) : extend to Laguerre cells, i.e., w0 != w1
 
         Polygon result;
+        Vector N = Pj-Pi;
+        double rhs =0.5 *(Pj.norm2()- Pi.norm2()+ w0-wi);
+        int n =(int)V.vertices.size();
+        result.vertices.reserve(n+1);
+        for (int i=0; i<n; i++) {
+            Vector A=V.vertices[i];
+            Vector B=V.vertices[(i+1)%n];
+            bool Ain = false;
+            if (dot(A, N)-rhs<=1e-12) {
+                Ain=true;
+            }
+            bool Bin = false;
+            if (dot(B, N)-rhs<=1e-12) {
+                Bin=true;
+            }
+            if (Ain && Bin) {
+                result.vertices.push_back(B);
+            }
+            else if (Ain && !Bin) {
+                double t=dot(A, N)-rhs/(dot(A, N)-rhs-dot(B, N)-rhs);
+                result.vertices.push_back(A+t*(B-A));
+            }
+            else if (!Ain && Bin) {
+                double t=dot(A, N)-rhs/(dot(A, N)-rhs-dot(B, N)-rhs);
+                result.vertices.push_back(A+t*(B-A));
+                result.vertices.push_back(B);
+            }
+        }
 
         return result;
     }
@@ -337,7 +389,7 @@ public:
 };
 
 // saves a static svg file. The polygon vertices are supposed to be in the range [0..1], and a canvas of size 1000x1000 is created
-void save_svg(const std::vector<Polygon>& polygons, std::string filename, std::string fillcol = "none") {
+void save_svg(const std::vector<Polygon>& polygons, std::string filename, const std::vector<Vector>* points = NULL, std::string fillcol = "none") {
     FILE* f = fopen(filename.c_str(), "w+");
     fprintf(f, "<svg xmlns = \"http://www.w3.org/2000/svg\" width = \"1000\" height = \"1000\">\n");
     for (int i = 0; i < polygons.size(); i++) {
@@ -349,6 +401,16 @@ void save_svg(const std::vector<Polygon>& polygons, std::string filename, std::s
         fprintf(f, "\"\nfill = \"%s\" stroke = \"black\"/>\n", fillcol.c_str());
         fprintf(f, "</g>\n");
     }
+
+    if (points) {
+        fprintf(f, "<g>\n");
+        for (int i = 0; i < points->size(); i++) {
+            fprintf(f, "<circle cx = \"%3.3f\" cy = \"%3.3f\" r = \"3\" />\n", (*points)[i][0] * 1000., 1000. - (*points)[i][1] * 1000);
+        }
+        fprintf(f, "</g>\n");
+
+    }
+
     fprintf(f, "</svg>\n");
     fclose(f);
 }
