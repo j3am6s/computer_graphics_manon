@@ -203,7 +203,7 @@ public:
         cells.clear();
         cells.resize(points.size());
 
-#pragma omp parallel for schedule(dynamic)
+        #pragma omp parallel for schedule(dynamic)
         for (int i=0; i <(int)points.size(); i++) {
             Polygon cell;
             cell.vertices.push_back(Vector(0, 0));
@@ -211,6 +211,7 @@ public:
             cell.vertices.push_back(Vector(1, 1));
             cell.vertices.push_back(Vector(0, 1));
             for (int j=0; j<(int)points.size(); j++) {
+                if (i == j) continue;
                 double wi=.0;
                 double wj=.0;
                 cell =clip_by_bisector(cell, points[i], points[j], wi, wj);
@@ -218,7 +219,6 @@ public:
             cells[i] = cell;
         }
     }
-
 
     static Polygon clip_by_edge(const Polygon& V, const Vector& u, const Vector& v) {
 
@@ -241,11 +241,10 @@ public:
         Polygon result;
         Vector N = Pj-Pi;
         double rhs =0.5 *(Pj.norm2()- Pi.norm2()+ w0-wi);
-        int n =(int)V.vertices.size();
-        result.vertices.reserve(n+1);
-        for (int i=0; i<n; i++) {
+        result.vertices.reserve(V.vertices.size()+1);
+        for (int i=0; i<V.vertices.size(); i++) {
             Vector A=V.vertices[i];
-            Vector B=V.vertices[(i+1)%n];
+            Vector B=V.vertices[(i+1)%V.vertices.size()];
             bool Ain = false;
             if (dot(A, N)-rhs<=1e-12) {
                 Ain=true;
@@ -254,17 +253,20 @@ public:
             if (dot(B, N)-rhs<=1e-12) {
                 Bin=true;
             }
+
+            Vector M= (Pi+Pj)/2+((w0-wi)/(2*N.norm2())) *N;
+            double a= dot(B-A, Pj-Pi);
+            double t= dot(M -A, Pj-Pi)/dot(B-A, Pj-Pi);
+            Vector P= A+t*(B-A);
+
             if (Ain && Bin) {
                 result.vertices.push_back(B);
             }
             else if (Ain && !Bin) {
-                double t=dot(A, N)-rhs/(dot(A, N)-rhs-dot(B, N)-rhs);
-                result.vertices.push_back(A+t*(B-A));
+                result.vertices.push_back(P);
             }
             else if (!Ain && Bin) {
-                double t=dot(A, N)-rhs/(dot(A, N)-rhs-dot(B, N)-rhs);
-                result.vertices.push_back(A+t*(B-A));
-                result.vertices.push_back(B);
+                result.vertices.push_back(P);
             }
         }
 
@@ -287,7 +289,7 @@ class OptimalTransport {
 public:
     OptimalTransport() {};
 
-    void optimize();
+    void optimize(){};
 
     VoronoiDiagram vor;
 };
@@ -316,6 +318,10 @@ static lbfgsfloatval_t evaluate(
     // g[i] = ...
     // fx = ...
 
+    int i;
+    double s = 0;
+    g[i] =ot->vor.cells[i].area()-(0.6/(n-1));
+    //oulah
     return fx;
 }
 
@@ -338,6 +344,11 @@ void OptimalTransport::optimize() {
     lbfgsfloatval_t fx;
     std::vector<double> weights(vor.weights);
 
+
+    //
+    memcpy(&weights[0], &vor.weights[0], vor.weights.size()*sizeof(weights[0]));
+    //
+
     lbfgs_parameter_t param;
     // Initialize the parameters for the L-BFGS optimization.
     lbfgs_parameter_init(&param);
@@ -345,12 +356,17 @@ void OptimalTransport::optimize() {
     // run the LBFGS optimizer
     int ret = lbfgs(weights.size(), &weights[0], &fx, evaluate, progress, (void*)this, &param);
 
+    // maybe after
+    memcpy(&vor.weights[0], &weights[0], (vor.weights.size()-1) * sizeof(weights[0]));
+    //
+
     // copy the result back to the voronoi structure
     vor.weights = weights;
 
     // finally recompute the Voronoi diagram with the final optimized weights
     vor.compute();
 }
+
 
 
 // Lab 3 (fluids)
@@ -419,21 +435,31 @@ void save_svg(const std::vector<Polygon>& polygons, std::string filename, const 
 
 
 
-
-
 int main() {
 
-    Polygon p;
-    p.vertices.push_back(Vector(0.1, 0.2));
-    p.vertices.push_back(Vector(0.6, 0.4));
-    p.vertices.push_back(Vector(0.5, 0.7));
-    p.vertices.push_back(Vector(0.2, 0.5));
+    int N = 50;
+    VoronoiDiagram Vor;
+    for (int i=0; i<N; i++){
+    //    
+    }
+    Vor.compute();
+    OptimalTransport ot;
+    ot.vor = Vor;
+    ot.optimize();
+    save_svg(ot.vor.cells, "test.svg");
 
-    std::vector<Polygon> s;
-    s.push_back(p);
+    // Polygon p;
+    // p.vertices.push_back(Vector(0.1, 0.2));
+    // p.vertices.push_back(Vector(0.6, 0.4));
+    // p.vertices.push_back(Vector(0.5, 0.7));
+    // p.vertices.push_back(Vector(0.2, 0.5));
 
-    save_frame(s, "toto");
-    save_svg(s, "toto.svg");
-    return 0;
+    // std::vector<Polygon> s;
+    // s.push_back(p);
+
+    // save_frame(s, "toto");
+    // save_svg(s, "toto.svg");
+    // return 0;
 }
 
+    
