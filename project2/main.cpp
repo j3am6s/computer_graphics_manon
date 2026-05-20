@@ -436,3 +436,4 @@ int main() {
     save_svg(s, "toto.svg");
     return 0;
 }
+
